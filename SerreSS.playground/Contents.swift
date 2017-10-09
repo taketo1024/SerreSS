@@ -20,7 +20,8 @@ extension Optional where Wrapped == G {
     }
 }
 
-struct Sheet: Sequence {
+final class Sheet: Sequence {
+    let degree: Int
     var elements: [[G?]]
     
     var width: Int {
@@ -31,7 +32,8 @@ struct Sheet: Sequence {
         return elements.count
     }
     
-    init(_ width: Int, _ height: Int) {
+    init(_ degree: Int, _ width: Int, _ height: Int) {
+        self.degree = degree
         self.elements = Array(repeating: Array(repeating:G?.none , count: width), count: height)
     }
     
@@ -49,12 +51,30 @@ struct Sheet: Sequence {
         }
     }
     
+    subscript(t: (Int, Int)) -> G? {
+        get {
+            return self[t.0, t.1]
+        } set {
+            self[t.0, t.1] = newValue
+        }
+    }
+    
     func row(_ p: Int) -> [G?] {
         return (0 ..< width).map{ self[p, $0] }
     }
     
     func col(_ q: Int) -> [G?] {
         return (0 ..< height).map{ self[$0, q] }
+    }
+    
+    func target(_ p: Int, _ q: Int) -> (Int, Int) {
+        let r = degree
+        return (p + r, q - r + 1)
+    }
+    
+    func cotarget(_ p: Int, _ q: Int) -> (Int, Int) {
+        let r = degree
+        return (p - r, q + r - 1)
     }
     
     var detailDescription : String {
@@ -92,7 +112,7 @@ struct Sheet: Sequence {
     }
 }
 
-struct SpectralSequence {
+final class SpectralSequence {
     var name: String? = nil
     let size: (width: Int, height: Int)
     
@@ -114,7 +134,8 @@ struct SpectralSequence {
         get {
             return self[2].col(0)
         } set {
-            newValue.enumerated().forEach{ (i, g) in self[2][0, i] = g }
+            let E2 = self[2]
+            newValue.enumerated().forEach{ (i, g) in E2[0, i] = g }
         }
     }
     
@@ -122,8 +143,13 @@ struct SpectralSequence {
         get {
             return self[2].row(0)
         } set {
-            newValue.enumerated().forEach{ (i, g) in self[2][i, 0] = g }
+            let E2 = self[2]
+            newValue.enumerated().forEach{ (i, g) in E2[i, 0] = g }
         }
+    }
+    
+    var lastSheet: Sheet {
+        return sheets.last!
     }
     
     var maxDegree: Int {
@@ -136,39 +162,43 @@ struct SpectralSequence {
         self.size = size
         
         let count = min(size.width - 1, size.height)
-        self.sheets = (2 ..< 2 + count).map{ _ in Sheet(width, height) }
+        self.sheets = (2 ..< 2 + count).map{ r in Sheet(r, width, height) }
     }
     
     var detailDescription : String {
-        return sheets.enumerated().map{ (i, sheet) in
-            "E_\( (i < sheets.count - 1) ? "\(i + 2)" : "∞")\n" + sheet.detailDescription
+        return sheets.map{
+            "E_\( $0.degree < maxDegree ? "\($0.degree)" : "∞")\n"
+                + $0.detailDescription
             }.join("\n\n")
     }
     
-    mutating func solve() {
+    func solve() {
         fillE2()
         cascadeZeros()
+        fillEinf()
     }
     
-    mutating func fillE2() {
+    func fillE2() {
+        let E2 = self[2]
         for p in (0 ..< width) {
             for q in (0 ..< height) {
-                if self[2][p, q] != nil {
+                if E2[p, q] != nil {
                     continue
                 }
                 
-                if self[2][p, 0].isZero {
-                    self[2][p, q] = 0
-                } else if self[2][0, q].isZero {
-                    self[2][p, q] = 0
-                } else if self[2][p, 0] != nil && self[2][0, q] != nil {
-                    self[2][p, q] = self[2][p, 0]! * self[2][0, q]!
+                if E2[p, 0].isZero {
+                    E2[p, q] = 0
+                } else if E2[0, q].isZero {
+                    E2[p, q] = 0
+                } else if E2[p, 0] != nil && E2[0, q] != nil {
+                    E2[p, q] = E2[p, 0]! * E2[0, q]!
                 }
             }
         }
     }
 
-    mutating func cascadeZeros() {
+    func cascadeZeros() {
+        let E = self
         let N = maxDegree
         if N == 2 {
             return
@@ -177,18 +207,32 @@ struct SpectralSequence {
         for (p, q, g) in self[2] {
             if g.isZero {
                 for i in (3 ... N) {
-                    self[i][p, q] = 0
+                    E[i][p, q] = 0
                 }
+            }
+        }
+    }
+    
+    func fillEinf() {
+        let Einf = self.lastSheet
+        for (r, g) in total.enumerated() {
+            if !g.isZero {
+                continue
+            }
+            
+            for p in (0 ... r) {
+                let q = r - p
+                Einf[p, q] = 0
             }
         }
     }
 }
 
-var E = SpectralSequence(size: (3, 2))
-E.name = "S^1 -> S^3 -> CP^1"
+var E = SpectralSequence(size: (5, 2))
+
+E.name = "S^1 -> S^5 -> CP^2"
 E.fiber = [Z, Z]
-//E.base  = [Z, 0, Z]
-//E.total = [Z, 0, 0, Z]
+E.total = [Z, 0, 0, 0, 0, Z]
 
 E.solve()
 
