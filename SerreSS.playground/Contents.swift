@@ -371,11 +371,11 @@ do {
 }
 
 do {
-    let n = 1
+    let n = 2
     let E = SerreSS(size: (2*n + 2, n*n + 1))
     
     E.name = "U(\(n)) -> U(\(n+1)) -> S^\(2*n+1)"
-    E.fiber = [Z, Z, 0, Z, Z, Z, Z, 0, Z, Z]
+    E.fiber = [Z, Z, 0, Z, Z]
     E.base  = [Z] + 0.repeating(2 * n) + [Z]
     
     print(E.name!, "\n")
@@ -383,4 +383,19 @@ do {
     print("H^*(U(\(n+1))) = {", E.total.map{ $0.symbol }.join(", "), "}\n\n")
     
     // TODO compute total from E_infty
+}
+
+do {
+    let n = 2
+    let E = SerreSS(size: (8, 6))
+    
+    E.name = "K(Z, \(n)) -> pt -> K(Z, \(n+1))"
+    E.rightBounded = false
+    E.upperBounded = false
+    E.fiber = [Z, 0, Z, 0, Z, 0, Z, 0]
+    E.total = [Z] + 0.repeating(16)
+
+    print(E.name!, "\n")
+    print(E.detailDescription, "\n")
+    print("H^*(Z, (\(n+1))) = {", E.base.map{ $0.symbol }.join(", "), "}\n\n")
 }
