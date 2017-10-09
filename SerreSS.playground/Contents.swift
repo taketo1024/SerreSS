@@ -38,21 +38,11 @@ final class Sheet: Sequence {
                     fatalError("conflict at E_\(r)[\((p, q))], \(group!) != \(newValue!)")
                 }
             } didSet {
-                self.update()
-                target?.update()
-                cotarget?.update()
+                update()
             }
         }
         
-        func update() {
-            if let above = above, !above.isDetermined && isIsomorphicToAbove {
-                above.group = self.group
-            }
-            if let below = below, !below.isDetermined && below.isIsomorphicToAbove {
-                below.group = self.group
-            }
-        }
-        
+        weak var sheet: Sheet? = nil
         weak var target: Component? = nil
         weak var cotarget: Component? = nil
         weak var above: Component? = nil
@@ -84,6 +74,74 @@ final class Sheet: Sequence {
             return isZeroMap && (cotarget?.isZeroMap ?? true)
         }
         
+        var isInjectiveToTarget: Bool {
+            return (above?.isZero ?? false) && (cotarget?.isZeroMap ?? true)
+        }
+        
+        var isSurjectiveToTarget: Bool {
+            return (target?.above?.isZero ?? false) && (target?.isZeroMap ?? true)
+        }
+        
+        var isIsomorphicToTarget: Bool {
+            return isInjectiveToTarget && isSurjectiveToTarget
+        }
+        
+        func update() {
+            if r == 2 {
+                let E2 = sheet!
+                
+                if p == 0 { // copy rows →
+                    for p in (1 ..< E2.width) {
+                        if E2[0, q].isZero {
+                            E2[p, q].group = 0
+                        } else if E2[p, 0].isDetermined && E2[0, q].isDetermined {
+                            E2[p, q].group = E2[p, 0].group! * E2[0, q].group!
+                        }
+                    }
+                }
+                if q == 0 { // copy cols ↑
+                    for q in (1 ..< E2.height) {
+                        if E2[p, 0].isZero {
+                            E2[p, q].group = 0
+                        } else if E2[p, 0].isDetermined && E2[0, q].isDetermined {
+                            E2[p, q].group = E2[p, 0].group! * E2[0, q].group!
+                        }
+                    }
+                }
+            }
+            
+            if let above = above, !above.isDetermined && isIsomorphicToAbove {
+                above.group = self.group
+            }
+            if let target = target, !target.isDetermined && isIsomorphicToTarget {
+                target.group = self.group
+            }
+            if let cotarget = cotarget, !cotarget.isDetermined && cotarget.isIsomorphicToTarget {
+                cotarget.group = self.group
+            }
+            if let below = below {
+                if !below.isDetermined && below.isIsomorphicToAbove {
+                    below.group = self.group
+                }
+                if let target = below.target, below.isIsomorphicToTarget {
+                    if !target.isDetermined && below.isDetermined {
+                        target.group = below.group
+                    }
+                    if !below.isDetermined && target.isDetermined {
+                        below.group = target.group
+                    }
+                }
+                if let cotarget = below.cotarget, cotarget.isIsomorphicToTarget {
+                    if !cotarget.isDetermined && below.isDetermined {
+                        cotarget.group = below.group
+                    }
+                    if !below.isDetermined && cotarget.isDetermined {
+                        below.group = cotarget.group
+                    }
+                }
+            }
+        }
+        
         static func zero(_ r: Int, _ p: Int, _ q: Int) -> Component {
             let c = Component(r, p, q)
             c.group = 0
@@ -111,6 +169,7 @@ final class Sheet: Sequence {
         }
         
         for (p, q, e) in self {
+            e.sheet = self
             if (0 ..< width).contains(p + r) && (0 ..< height).contains(q - r + 1) {
                 let e2 = self[p + r, q - r + 1]
                 e.target = e2
@@ -176,7 +235,7 @@ final class Sheet: Sequence {
     }
 }
 
-final class SpectralSequence {
+final class SerreSS {
     var name: String? = nil
     let size: (width: Int, height: Int)
     
@@ -249,7 +308,6 @@ final class SpectralSequence {
     }
     
     func solve() {
-        fillE2()
         fillEinf()
     }
     
@@ -287,13 +345,13 @@ final class SpectralSequence {
     }
 }
 
-let n = 3
-var E = SpectralSequence(size: (2 * n + 1, 2))
+var E = SerreSS(size: (5, 2))
 
-E.name = "S^1 -> S^{2n + 1} -> CP^n"
+E.name = "S^1 -> S^5 -> CP^2"
 E.fiber = [Z, Z]
-E.total = [Z] + 0.repeating(2 * n) + [Z]
-
+E.total = [Z, 0, 0, 0, 0, Z]
 E.solve()
 
-print(E.detailDescription)
+print(E.name!, "\n")
+print(E.detailDescription, "\n")
+print("H^*(CP^2) = {", E.base.flatMap{ $0 == 1 ? "Z" : "0"}.join(", "), "}")
