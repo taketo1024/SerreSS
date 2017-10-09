@@ -28,9 +28,17 @@ extension Array where Element == String {
 
 final class Sheet: Sequence {
     final class Component {
+        weak var sheet: Sheet!
+        
         let r: Int
         let p: Int
         let q: Int
+        
+        init(_ sheet: Sheet, _ r: Int, _ p: Int, _ q: Int, group: G? = nil) {
+            self.sheet = sheet
+            (self.r, self.p, self.q) = (r, p, q)
+            self.group = group
+        }
         
         var group: G? = nil {
             willSet {
@@ -38,18 +46,26 @@ final class Sheet: Sequence {
                     fatalError("conflict at E_\(r)[\((p, q))], \(group!) != \(newValue!)")
                 }
             } didSet {
-                update()
+                if (0 ..< sheet.width).contains(p) && (0 ..< sheet.height).contains(q) {
+                    update()
+                }
             }
         }
         
-        weak var sheet: Sheet? = nil
-        weak var target: Component? = nil
-        weak var cotarget: Component? = nil
-        weak var above: Component? = nil
-        weak var below: Component? = nil
+        var target: Component {
+            return sheet[p + r, q - r + 1]
+        }
         
-        init(_ r: Int, _ p: Int, _ q: Int) {
-            (self.r, self.p, self.q) = (r, p, q)
+        var cotarget: Component {
+            return sheet[p - r, q + r - 1]
+        }
+        
+        var above: Component? {
+            return sheet.above?[p, q]
+        }
+        
+        var below: Component? {
+            return sheet.below?[p, q]
         }
         
         var isDetermined: Bool {
@@ -61,7 +77,7 @@ final class Sheet: Sequence {
         }
         
         var isZeroMap: Bool {
-            if self.isZero || target == nil {
+            if self.isZero || target.isZero {
                 return true
             }
             
@@ -71,15 +87,15 @@ final class Sheet: Sequence {
         }
         
         var isIsomorphicToAbove: Bool {
-            return isZeroMap && (cotarget?.isZeroMap ?? true)
+            return isZeroMap && cotarget.isZeroMap
         }
         
         var isInjectiveToTarget: Bool {
-            return (above?.isZero ?? false) && (cotarget?.isZeroMap ?? true)
+            return self.isZero || ((above?.isZero ?? false) && cotarget.isZeroMap)
         }
         
         var isSurjectiveToTarget: Bool {
-            return (target?.above?.isZero ?? false) && (target?.isZeroMap ?? true)
+            return target.isZero || ((target.above?.isZero ?? false) && target.isZeroMap)
         }
         
         var isIsomorphicToTarget: Bool {
@@ -113,44 +129,40 @@ final class Sheet: Sequence {
             if let above = above, !above.isDetermined && isIsomorphicToAbove {
                 above.group = self.group
             }
-            if let target = target, !target.isDetermined && isIsomorphicToTarget {
+            if self.isIsomorphicToTarget && !target.isDetermined {
                 target.group = self.group
             }
-            if let cotarget = cotarget, !cotarget.isDetermined && cotarget.isIsomorphicToTarget {
+            if cotarget.isIsomorphicToTarget && !cotarget.isDetermined {
                 cotarget.group = self.group
             }
             if let below = below {
                 if !below.isDetermined && below.isIsomorphicToAbove {
                     below.group = self.group
                 }
-                if let target = below.target, below.isIsomorphicToTarget {
-                    if !target.isDetermined && below.isDetermined {
-                        target.group = below.group
+                if below.isIsomorphicToTarget {
+                    let belowTarget = below.target
+                    if !belowTarget.isDetermined && below.isDetermined {
+                        belowTarget.group = below.group
                     }
-                    if !below.isDetermined && target.isDetermined {
-                        below.group = target.group
+                    if !below.isDetermined && belowTarget.isDetermined {
+                        below.group = belowTarget.group
                     }
                 }
-                if let cotarget = below.cotarget, cotarget.isIsomorphicToTarget {
-                    if !cotarget.isDetermined && below.isDetermined {
-                        cotarget.group = below.group
+                if below.cotarget.isIsomorphicToTarget {
+                    let belowCotarget = below.cotarget
+                    if !belowCotarget.isDetermined && below.isDetermined {
+                        belowCotarget.group = below.group
                     }
-                    if !below.isDetermined && cotarget.isDetermined {
-                        below.group = cotarget.group
+                    if !below.isDetermined && belowCotarget.isDetermined {
+                        below.group = belowCotarget.group
                     }
                 }
             }
         }
-        
-        static func zero(_ r: Int, _ p: Int, _ q: Int) -> Component {
-            let c = Component(r, p, q)
-            c.group = 0
-            return c
-        }
     }
     
     let degree: Int
-    var elements: [[Component]]
+    var elements: [[Component]] = []
     
     var width: Int {
         return elements.first?.count ?? 0
@@ -160,20 +172,17 @@ final class Sheet: Sequence {
         return elements.count
     }
     
+    var above: Sheet?
+    var below: Sheet?
+    
+    var upperBounded = true
+    var rightBounded = true
+    
     init(_ r: Int, _ width: Int, _ height: Int) {
         self.degree = r
         self.elements = (0 ..< height).map { q in
             (0 ..< width).map { p in
-                Component(r, p, q)
-            }
-        }
-        
-        for (p, q, e) in self {
-            e.sheet = self
-            if (0 ..< width).contains(p + r) && (0 ..< height).contains(q - r + 1) {
-                let e2 = self[p + r, q - r + 1]
-                e.target = e2
-                e2.cotarget = e
+                Component(self, r, p, q)
             }
         }
     }
@@ -182,8 +191,10 @@ final class Sheet: Sequence {
         get {
             if (0 ..< width).contains(p) && (0 ..< height).contains(q) {
                 return elements[q][p]
+            } else if (p < 0 || q < 0) || (p >= width && q < height && rightBounded) || (p < width && q >= height && upperBounded) || (p >= width && q >= height && rightBounded && upperBounded) {
+                return Component(self, degree, p, q, group: 0)
             } else {
-                return Component.zero(degree, p, q)
+                return Component(self, degree, p, q)
             }
         } set {
             if (0 ..< width).contains(p) && (0 ..< height).contains(q) {
@@ -237,14 +248,34 @@ final class Sheet: Sequence {
 
 final class SerreSS {
     var name: String? = nil
-    let size: (width: Int, height: Int)
     
+    let size: (width: Int, height: Int)
     var width : Int { return size.width }
     var height: Int { return size.height }
     
     var sheets: [Sheet] = []
-    var total: [G?] = []
+    
+    var lastSheet: Sheet {
+        return sheets.last!
+    }
+    
+    var maxDegree: Int {
+        return sheets.count + 1
+    }
+    
 
+    var rightBounded = true {
+        didSet {
+            sheets.forEach{ $0.rightBounded = rightBounded }
+        }
+    }
+
+    var upperBounded = true {
+        didSet {
+            sheets.forEach{ $0.upperBounded = upperBounded }
+        }
+    }
+    
     subscript (i: Int) -> Sheet {
         get {
             return sheets[i - 2]
@@ -273,12 +304,22 @@ final class SerreSS {
         }
     }
     
-    var lastSheet: Sheet {
-        return sheets.last!
-    }
-    
-    var maxDegree: Int {
-        return sheets.count + 1
+    var total: [G?] = [] {
+        didSet {
+            let Einf = self.lastSheet
+            for (r, g) in total.enumerated() {
+                if !g.isZero {
+                    continue
+                }
+                
+                for p in (0 ... r) {
+                    let q = r - p
+                    if p < width && q < height {
+                        Einf[p, q].group = 0
+                    }
+                }
+            }
+        }
     }
     
     init(size: (width: Int, height: Int)) {
@@ -292,11 +333,8 @@ final class SerreSS {
         for r in (2 ..< 2 + count - 1) {
             let E1 = self[r]
             let E2 = self[r + 1]
-            for (p, q, _) in E1 {
-                let (e1, e2) = (E1[p, q], E2[p, q])
-                e1.above = e2
-                e2.below = e1
-            }
+            E1.above = E2
+            E2.below = E1
         }
     }
     
@@ -306,52 +344,34 @@ final class SerreSS {
                 + $0.detailDescription
             }.join("\n\n")
     }
-    
-    func solve() {
-        fillEinf()
-    }
-    
-    func fillE2() {
-        let E2 = self[2]
-        for p in (1 ..< width) {
-            for q in (1 ..< height) {
-                if E2[p, q].group != nil {
-                    continue
-                }
-                
-                if E2[p, 0].isZero {
-                    E2[p, q].group = 0
-                } else if E2[0, q].isZero {
-                    E2[p, q].group = 0
-                } else if E2[p, 0].isDetermined && E2[0, q].isDetermined {
-                    E2[p, q].group = E2[p, 0].group! * E2[0, q].group!
-                }
-            }
-        }
-    }
-
-    func fillEinf() {
-        let Einf = self.lastSheet
-        for (r, g) in total.enumerated() {
-            if !g.isZero {
-                continue
-            }
-            
-            for p in (0 ... r) {
-                let q = r - p
-                Einf[p, q].group = 0
-            }
-        }
-    }
 }
 
-var E = SerreSS(size: (5, 2))
+do {
+    let n = 2
+    let E = SerreSS(size: (2 * n + 1, 2))
+    
+    E.name = "S^1 -> S^\(2*n+1) -> CP^\(n)"
+    E.fiber = [Z, Z]
+    E.total = [Z] + 0.repeating(2 * n) + [Z]
+    
+    print(E.name!, "\n")
+    print(E.detailDescription, "\n")
+    print("H^*(CP^\(n)) = {", E.base.map{ $0.symbol }.join(", "), "}\n\n")
+}
 
-E.name = "S^1 -> S^5 -> CP^2"
-E.fiber = [Z, Z]
-E.total = [Z, 0, 0, 0, 0, Z]
-E.solve()
+do {
+    let n = 2
+    let E = SerreSS(size: (n+1, 10))
+    
+    E.name = "LS^\(n) -> PS^\(n) -> S^\(n)"
+    E.upperBounded = false
+    E.base = [Z] + 0.repeating(n-1) + [Z]
+    E.total = [Z] + 0.repeating(11)
+    
+    print(E.name!, "\n")
+    print(E.detailDescription, "\n")
+    
+    E[2][3, 6].isZeroMap
+    print("H^*(LP^\(n)) = {", E.fiber.map{ $0.symbol }.join(", "), "}\n\n")
+}
 
-print(E.name!, "\n")
-print(E.detailDescription, "\n")
-print("H^*(CP^2) = {", E.base.flatMap{ $0 == 1 ? "Z" : "0"}.join(", "), "}")
