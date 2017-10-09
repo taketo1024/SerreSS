@@ -5,9 +5,9 @@ import Foundation
 typealias G = Int
 let Z = 1
 
-extension Array where Element == String {
-    func join(_ separator: String = "") -> String {
-        return self.joined(separator: separator)
+extension G {
+    func repeating(_ n: Int) -> [Int] {
+        return Array(repeating: self, count: n)
     }
 }
 
@@ -17,6 +17,12 @@ extension Optional where Wrapped == G {
     }
     var symbol: String {
         return self.flatMap{ $0 == 1 ? "Z" : "0"} ?? "?"
+    }
+}
+
+extension Array where Element == String {
+    func join(_ separator: String = "") -> String {
+        return self.joined(separator: separator)
     }
 }
 
@@ -75,6 +81,18 @@ final class Sheet: Sequence {
     func cotarget(_ p: Int, _ q: Int) -> (Int, Int) {
         let r = degree
         return (p - r, q + r - 1)
+    }
+    
+    func isZeroMap(_ p: Int, _ q: Int) -> Bool {
+        if self[p, q].isZero || self[target(p, q)].isZero {
+            return true
+        }
+        
+        return false // false meaning 'unknown'
+    }
+    
+    func isZeroMap(_ e: (Int, Int)) -> Bool {
+        return isZeroMap(e.0, e.1)
     }
     
     var detailDescription : String {
@@ -176,6 +194,7 @@ final class SpectralSequence {
         fillE2()
         cascadeZeros()
         fillEinf()
+        updateAll()
     }
     
     func fillE2() {
@@ -198,7 +217,6 @@ final class SpectralSequence {
     }
 
     func cascadeZeros() {
-        let E = self
         let N = maxDegree
         if N == 2 {
             return
@@ -206,8 +224,9 @@ final class SpectralSequence {
         
         for (p, q, g) in self[2] {
             if g.isZero {
-                for i in (3 ... N) {
-                    E[i][p, q] = 0
+                for r in (3 ... N) {
+                    let Er = self[r]
+                    Er[p, q] = 0
                 }
             }
         }
@@ -226,13 +245,63 @@ final class SpectralSequence {
             }
         }
     }
+    
+    func updateAll() {
+        let E2 = self[2]
+        for (p, q, _) in E2 {
+            update(2, p, q)
+        }
+    }
+    
+    func update(_ r: Int, _ p: Int, _ q: Int) {
+        let Er = self[r]
+        let infty = maxDegree
+        
+        guard (0 ..< width).contains(p) && (0 ..< height).contains(q) && (2 ... infty).contains(r) else {
+            return
+        }
+        
+        guard r < infty else {
+            return
+        }
+        
+        let Er1 = self[r + 1]
+        
+        if Er.isZeroMap(p, q) && Er.isZeroMap(Er.cotarget(p, q)) { // => E_r[p, q] = E_{r+1}[p, q]
+            if Er[p, q] == nil {
+                
+                if Er1[p, q] == nil {
+                    update(r + 1, p, q)
+                }
+                
+                if Er1[p, q] != nil {
+                    Er[p, q] = Er1[p, q]!
+                    // update?
+                    
+                    // if r == 2 && ...
+                }
+            } else {
+                if Er1[p, q] == nil {
+                    Er1[p, q] = Er[p, q]!
+                    update(r + 1, p, q)
+                } else if Er[p, q] != Er1[p, q] {
+                    fatalError()
+                }
+            }
+        }
+        
+        else if Er1[p, q].isZero {
+            
+        }
+    }
 }
 
-var E = SpectralSequence(size: (5, 2))
+let n = 2
+var E = SpectralSequence(size: (2 * n + 1, 2))
 
-E.name = "S^1 -> S^5 -> CP^2"
+E.name = "S^1 -> S^{2n + 1} -> CP^n"
 E.fiber = [Z, Z]
-E.total = [Z, 0, 0, 0, 0, Z]
+E.total = [Z] + 0.repeating(2 * n) + [Z]
 
 E.solve()
 
