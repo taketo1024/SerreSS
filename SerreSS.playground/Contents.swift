@@ -27,8 +27,72 @@ extension Array where Element == String {
 }
 
 final class Sheet: Sequence {
+    final class Component {
+        let r: Int
+        let p: Int
+        let q: Int
+        
+        var group: G? = nil {
+            willSet {
+                if group != nil && newValue != nil && group! != newValue! {
+                    fatalError("conflict at E_\(r)[\((p, q))], \(group!) != \(newValue!)")
+                }
+            } didSet {
+                self.update()
+                target?.update()
+                cotarget?.update()
+            }
+        }
+        
+        func update() {
+            if let above = above, !above.isDetermined && isIsomorphicToAbove {
+                above.group = self.group
+            }
+            if let below = below, !below.isDetermined && below.isIsomorphicToAbove {
+                below.group = self.group
+            }
+        }
+        
+        weak var target: Component? = nil
+        weak var cotarget: Component? = nil
+        weak var above: Component? = nil
+        weak var below: Component? = nil
+        
+        init(_ r: Int, _ p: Int, _ q: Int) {
+            (self.r, self.p, self.q) = (r, p, q)
+        }
+        
+        var isDetermined: Bool {
+            return group != nil
+        }
+        
+        var isZero: Bool {
+            return group.isZero
+        }
+        
+        var isZeroMap: Bool {
+            if self.isZero || target == nil {
+                return true
+            }
+            
+            // TODO
+            
+            return false
+        }
+        
+        var isIsomorphicToAbove: Bool {
+            return isZeroMap && (cotarget?.isZeroMap ?? true)
+        }
+        
+        static func zero(_ r: Int, _ p: Int, _ q: Int) -> Component {
+            let c = Component(r, p, q)
+            c.group = 0
+            return c
+        }
+    }
+    
     let degree: Int
-    var elements: [[G?]]
+    var elements: [[Component]]
     
     var width: Int {
         return elements.first?.count ?? 0
@@ -38,17 +102,29 @@ final class Sheet: Sequence {
         return elements.count
     }
     
-    init(_ degree: Int, _ width: Int, _ height: Int) {
-        self.degree = degree
-        self.elements = Array(repeating: Array(repeating:G?.none , count: width), count: height)
+    init(_ r: Int, _ width: Int, _ height: Int) {
+        self.degree = r
+        self.elements = (0 ..< height).map { q in
+            (0 ..< width).map { p in
+                Component(r, p, q)
+            }
+        }
+        
+        for (p, q, e) in self {
+            if (0 ..< width).contains(p + r) && (0 ..< height).contains(q - r + 1) {
+                let e2 = self[p + r, q - r + 1]
+                e.target = e2
+                e2.cotarget = e
+            }
+        }
     }
     
-    subscript (p: Int, q: Int) -> G? {
+    subscript (p: Int, q: Int) -> Component {
         get {
             if (0 ..< width).contains(p) && (0 ..< height).contains(q) {
                 return elements[q][p]
             } else {
-                return 0
+                return Component.zero(degree, p, q)
             }
         } set {
             if (0 ..< width).contains(p) && (0 ..< height).contains(q) {
@@ -57,7 +133,7 @@ final class Sheet: Sequence {
         }
     }
     
-    subscript(t: (Int, Int)) -> G? {
+    subscript(t: (Int, Int)) -> Component {
         get {
             return self[t.0, t.1]
         } set {
@@ -65,41 +141,11 @@ final class Sheet: Sequence {
         }
     }
     
-    func row(_ p: Int) -> [G?] {
-        return (0 ..< width).map{ self[p, $0] }
-    }
-    
-    func col(_ q: Int) -> [G?] {
-        return (0 ..< height).map{ self[$0, q] }
-    }
-    
-    func target(_ p: Int, _ q: Int) -> (Int, Int) {
-        let r = degree
-        return (p + r, q - r + 1)
-    }
-    
-    func cotarget(_ p: Int, _ q: Int) -> (Int, Int) {
-        let r = degree
-        return (p - r, q + r - 1)
-    }
-    
-    func isZeroMap(_ p: Int, _ q: Int) -> Bool {
-        if self[p, q].isZero || self[target(p, q)].isZero {
-            return true
-        }
-        
-        return false // false meaning 'unknown'
-    }
-    
-    func isZeroMap(_ e: (Int, Int)) -> Bool {
-        return isZeroMap(e.0, e.1)
-    }
-    
     var detailDescription : String {
         let head = "\t|\t" + (0 ..< width).map(String.init).joined(separator: "\t")
         let line = String(repeating: "-", count: 4 * (width + 1) + 2)
-        let body = elements.enumerated().map { (i: Int, row: [G?]) -> String in
-            "\(i)\t|\t" + row.map { $0.symbol }.join("\t")
+        let body = elements.enumerated().map { (i: Int, row: [Component]) -> String in
+            "\(i)\t|\t" + row.map { $0.group.symbol }.join("\t")
         }
         return ([head, line] + body).reversed().join("\n")
     }
@@ -117,7 +163,7 @@ final class Sheet: Sequence {
             self.p = (-1, 0)
         }
         
-        mutating public func next() -> (Int, Int, G?)? {
+        mutating public func next() -> (Int, Int, Component)? {
             p = (p.0 + 1, p.1)
             if p.0 >= sheet.width {
                 p = (0, p.1 + 1)
@@ -150,19 +196,21 @@ final class SpectralSequence {
     
     var fiber: [G?] {
         get {
-            return self[2].col(0)
+            let E2 = self[2]
+            return (0 ..< height).map { q in E2[0, q].group }
         } set {
             let E2 = self[2]
-            newValue.enumerated().forEach{ (i, g) in E2[0, i] = g }
+            newValue.enumerated().forEach{ (i, g) in E2[0, i].group = g }
         }
     }
     
     var base: [G?] {
         get {
-            return self[2].row(0)
+            let E2 = self[2]
+            return (0 ..< width).map { p in E2[p, 0].group }
         } set {
             let E2 = self[2]
-            newValue.enumerated().forEach{ (i, g) in E2[i, 0] = g }
+            newValue.enumerated().forEach{ (i, g) in E2[i, 0].group = g }
         }
     }
     
@@ -181,6 +229,16 @@ final class SpectralSequence {
         
         let count = min(size.width - 1, size.height)
         self.sheets = (2 ..< 2 + count).map{ r in Sheet(r, width, height) }
+        
+        for r in (2 ..< 2 + count - 1) {
+            let E1 = self[r]
+            let E2 = self[r + 1]
+            for (p, q, _) in E1 {
+                let (e1, e2) = (E1[p, q], E2[p, q])
+                e1.above = e2
+                e2.below = e1
+            }
+        }
     }
     
     var detailDescription : String {
@@ -192,46 +250,28 @@ final class SpectralSequence {
     
     func solve() {
         fillE2()
-        cascadeZeros()
         fillEinf()
-        updateAll()
     }
     
     func fillE2() {
         let E2 = self[2]
-        for p in (0 ..< width) {
-            for q in (0 ..< height) {
-                if E2[p, q] != nil {
+        for p in (1 ..< width) {
+            for q in (1 ..< height) {
+                if E2[p, q].group != nil {
                     continue
                 }
                 
                 if E2[p, 0].isZero {
-                    E2[p, q] = 0
+                    E2[p, q].group = 0
                 } else if E2[0, q].isZero {
-                    E2[p, q] = 0
-                } else if E2[p, 0] != nil && E2[0, q] != nil {
-                    E2[p, q] = E2[p, 0]! * E2[0, q]!
+                    E2[p, q].group = 0
+                } else if E2[p, 0].isDetermined && E2[0, q].isDetermined {
+                    E2[p, q].group = E2[p, 0].group! * E2[0, q].group!
                 }
             }
         }
     }
 
-    func cascadeZeros() {
-        let N = maxDegree
-        if N == 2 {
-            return
-        }
-        
-        for (p, q, g) in self[2] {
-            if g.isZero {
-                for r in (3 ... N) {
-                    let Er = self[r]
-                    Er[p, q] = 0
-                }
-            }
-        }
-    }
-    
     func fillEinf() {
         let Einf = self.lastSheet
         for (r, g) in total.enumerated() {
@@ -241,62 +281,13 @@ final class SpectralSequence {
             
             for p in (0 ... r) {
                 let q = r - p
-                Einf[p, q] = 0
+                Einf[p, q].group = 0
             }
-        }
-    }
-    
-    func updateAll() {
-        let E2 = self[2]
-        for (p, q, _) in E2 {
-            update(2, p, q)
-        }
-    }
-    
-    func update(_ r: Int, _ p: Int, _ q: Int) {
-        let Er = self[r]
-        let infty = maxDegree
-        
-        guard (0 ..< width).contains(p) && (0 ..< height).contains(q) && (2 ... infty).contains(r) else {
-            return
-        }
-        
-        guard r < infty else {
-            return
-        }
-        
-        let Er1 = self[r + 1]
-        
-        if Er.isZeroMap(p, q) && Er.isZeroMap(Er.cotarget(p, q)) { // => E_r[p, q] = E_{r+1}[p, q]
-            if Er[p, q] == nil {
-                
-                if Er1[p, q] == nil {
-                    update(r + 1, p, q)
-                }
-                
-                if Er1[p, q] != nil {
-                    Er[p, q] = Er1[p, q]!
-                    // update?
-                    
-                    // if r == 2 && ...
-                }
-            } else {
-                if Er1[p, q] == nil {
-                    Er1[p, q] = Er[p, q]!
-                    update(r + 1, p, q)
-                } else if Er[p, q] != Er1[p, q] {
-                    fatalError()
-                }
-            }
-        }
-        
-        else if Er1[p, q].isZero {
-            
         }
     }
 }
 
-let n = 2
+let n = 3
 var E = SpectralSequence(size: (2 * n + 1, 2))
 
 E.name = "S^1 -> S^{2n + 1} -> CP^n"
