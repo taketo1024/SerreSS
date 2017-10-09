@@ -46,9 +46,7 @@ final class Sheet: Sequence {
                     fatalError("conflict at E_\(r)[\((p, q))], \(group!) != \(newValue!)")
                 }
             } didSet {
-                if (0 ..< sheet.width).contains(p) && (0 ..< sheet.height).contains(q) {
-                    update()
-                }
+                update(didSet: true)
             }
         }
         
@@ -102,8 +100,12 @@ final class Sheet: Sequence {
             return isInjectiveToTarget && isSurjectiveToTarget
         }
         
-        func update() {
-            if r == 2 {
+        func update(didSet: Bool = false) {
+            guard (0 ..< sheet.width).contains(p) && (0 ..< sheet.height).contains(q) else {
+                return
+            }
+            
+            if didSet && r == 2 {
                 let E2 = sheet!
                 
                 if p == 0 { // copy rows →
@@ -126,37 +128,30 @@ final class Sheet: Sequence {
                 }
             }
             
-            if let above = above, !above.isDetermined && isIsomorphicToAbove {
-                above.group = self.group
-            }
-            if self.isIsomorphicToTarget && !target.isDetermined {
-                target.group = self.group
-            }
-            if cotarget.isIsomorphicToTarget && !cotarget.isDetermined {
-                cotarget.group = self.group
-            }
-            if let below = below {
-                if !below.isDetermined && below.isIsomorphicToAbove {
+            if self.isDetermined {
+                if let above = above, !above.isDetermined && isIsomorphicToAbove {
+                    above.group = self.group
+                }
+                
+                if self.isIsomorphicToTarget && !target.isDetermined {
+                    target.group = self.group
+                }
+                
+                if cotarget.isIsomorphicToTarget && !cotarget.isDetermined {
+                    cotarget.group = self.group
+                }
+                
+                if let below = below, !below.isDetermined && below.isIsomorphicToAbove {
                     below.group = self.group
                 }
-                if below.isIsomorphicToTarget {
-                    let belowTarget = below.target
-                    if !belowTarget.isDetermined && below.isDetermined {
-                        belowTarget.group = below.group
-                    }
-                    if !below.isDetermined && belowTarget.isDetermined {
-                        below.group = belowTarget.group
-                    }
-                }
-                if below.cotarget.isIsomorphicToTarget {
-                    let belowCotarget = below.cotarget
-                    if !belowCotarget.isDetermined && below.isDetermined {
-                        belowCotarget.group = below.group
-                    }
-                    if !below.isDetermined && belowCotarget.isDetermined {
-                        below.group = belowCotarget.group
-                    }
-                }
+            }
+            
+            if didSet {
+                target.update()
+                cotarget.update()
+                below?.update()
+                below?.target.update()
+                below?.cotarget.update()
             }
         }
     }
@@ -347,7 +342,7 @@ final class SerreSS {
 }
 
 do {
-    let n = 2
+    let n = 3
     let E = SerreSS(size: (2 * n + 1, 2))
     
     E.name = "S^1 -> S^\(2*n+1) -> CP^\(n)"
@@ -360,7 +355,7 @@ do {
 }
 
 do {
-    let n = 2
+    let n = 3
     let E = SerreSS(size: (n+1, 10))
     
     E.name = "LS^\(n) -> PS^\(n) -> S^\(n)"
@@ -375,3 +370,17 @@ do {
     print("H^*(LP^\(n)) = {", E.fiber.map{ $0.symbol }.join(", "), "}\n\n")
 }
 
+do {
+    let n = 1
+    let E = SerreSS(size: (2*n + 2, n*n + 1))
+    
+    E.name = "U(\(n)) -> U(\(n+1)) -> S^\(2*n+1)"
+    E.fiber = [Z, Z, 0, Z, Z, Z, Z, 0, Z, Z]
+    E.base  = [Z] + 0.repeating(2 * n) + [Z]
+    
+    print(E.name!, "\n")
+    print(E.detailDescription, "\n")
+    print("H^*(U(\(n+1))) = {", E.total.map{ $0.symbol }.join(", "), "}\n\n")
+    
+    // TODO compute total from E_infty
+}
